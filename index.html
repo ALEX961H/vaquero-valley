@@ -1061,7 +1061,7 @@ async function cloudInit(){if(!FB_CONFIG||CLOUD.ready)return;try{const b=`https:
 const cloudDoc=()=>CLOUD.db.collection('users').doc(CLOUD.user.uid);
 async function cloudPush(force){if(!CLOUD.user||CLOUD.busy)return;if(!force&&!CLOUD.dirty)return;CLOUD.busy=true;
   try{await cloudDoc().set({save:JSON.stringify(S),updatedAt:S.savedAt||Date.now(),lvl:S.lvl,farm:S.farmName||'',email:CLOUD.user.email||''});CLOUD.dirty=false;CLOUD.lastPush=Date.now();CLOUD.err=''}
-  catch(e){CLOUD.err='No se pudo guardar en la nube. Lo intentaremos de nuevo.'}finally{CLOUD.busy=false;renderCloudBtn()}}
+  catch(e){CLOUD.err='No se pudo guardar en la nube. '+fbMsg(e)}finally{CLOUD.busy=false;renderCloudBtn()}}
 async function cloudPull(){try{const d=await cloudDoc().get();
     if(!d.exists){await cloudPush(true);toast('☁️ Tu rancho ya se guarda en tu cuenta');return}
     const c=d.data();if(!c.save||(c.updatedAt||0)<=(S.savedAt||0)){await cloudPush(true);return}
@@ -1069,11 +1069,11 @@ async function cloudPull(){try{const d=await cloudDoc().get();
     if(fresh||confirm(`Encontramos un rancho guardado en tu cuenta: "${c.farm||'Mi granja'}", nivel ${c.lvl||1}.\n\n¿Quieres cargarlo en este dispositivo?\n(Si eliges Cancelar, el rancho de este dispositivo reemplazará al de tu cuenta.)`)){
       try{localStorage.setItem(KEY,c.save)}catch(e){}quiet=true;location.reload()}
     else await cloudPush(true)}
-  catch(e){CLOUD.err='No se pudo leer tu rancho de la nube.'}}
+  catch(e){CLOUD.err='No se pudo leer tu rancho de la nube. '+fbMsg(e);renderCloudBtn()}}
 function renderCloudBtn(){const b=$('cloudBtn');if(!b)return;b.textContent=CLOUD.user?(CLOUD.err?'⚠️':'☁️✓'):'☁️';b.classList.toggle('full',!!CLOUD.err)}
 const FB_ERR={'auth/email-already-in-use':'Ese correo ya tiene cuenta. Toca "Entrar".','auth/invalid-email':'El correo no es válido.','auth/weak-password':'La contraseña debe tener al menos 6 caracteres.',
-  'auth/invalid-credential':'Correo o contraseña incorrectos.','auth/wrong-password':'Correo o contraseña incorrectos.','auth/user-not-found':'No hay cuenta con ese correo.','auth/too-many-requests':'Demasiados intentos. Espera un momento.','auth/network-request-failed':'Sin conexión a internet.'};
-const fbMsg=e=>FB_ERR[e&&e.code]||'Algo salió mal. Intenta de nuevo.';
+  'auth/invalid-credential':'Correo o contraseña incorrectos.','auth/wrong-password':'Correo o contraseña incorrectos.','auth/user-not-found':'No hay cuenta con ese correo.','auth/too-many-requests':'Demasiados intentos. Espera un momento.','auth/network-request-failed':'Sin conexión a internet.','auth/operation-not-allowed':'En Firebase falta activar el acceso con correo electrónico/contraseña.','auth/configuration-not-found':'En Firebase falta activar Authentication (botón Comenzar) y el acceso con correo.','auth/unauthorized-domain':'En Firebase falta agregar alex961h.github.io en Dominios autorizados.','auth/admin-restricted-operation':'En Firebase falta activar el acceso con correo electrónico/contraseña.','permission-denied':'La base de datos no permite guardar: revisa las reglas de Firestore.'};
+const fbMsg=e=>(FB_ERR[e&&e.code]||'Algo salió mal. Intenta de nuevo.')+(e&&e.code?` (código: ${e.code})`:e&&e.message?` (${String(e.message).slice(0,80)})`:'');
 function cuentaPanel(){
   if(!FB_CONFIG)return `<div class="note">☁️ Las cuentas con correo se activan cuando conectemos tu proyecto de Firebase. Mientras tanto tu rancho se guarda en este dispositivo.</div>`;
   if(!CLOUD.ready)return `<div class="note">${CLOUD.err||'Conectando con la nube…'}</div>`;
