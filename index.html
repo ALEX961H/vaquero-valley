@@ -1049,7 +1049,7 @@ S.plots.forEach((p,i)=>{if(p.x==null){p.x=PLOT.x0+(i%PLOT.cols)*PLOT.gx;p.y=PLOT
 
 // ================= CUENTA EN LA NUBE (Firebase) =================
 // Pega aquí la configuración de tu proyecto Firebase (Configuración del proyecto → Tus apps → Web).
-const FB_CONFIG=null;
+const FB_CONFIG={apiKey:"AIzaSyDZ6PYEfWQGrjuDQtGV_QfUVt0eBp5YVxw",authDomain:"vaquero-valley.firebaseapp.com",projectId:"vaquero-valley",storageBucket:"vaquero-valley.firebasestorage.app",messagingSenderId:"145620611329",appId:"1:145620611329:web:547e429905a53f3f6a2b00"};
 const FB_VER='10.12.2';
 const CLOUD={ready:false,user:null,busy:false,err:'',dirty:false,lastPush:0,msg:''};
 function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s)})}
