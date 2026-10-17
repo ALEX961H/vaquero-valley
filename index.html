@@ -164,7 +164,7 @@ h3{font-family:var(--display);font-weight:400;font-size:17px;margin:6px 0 0;colo
   <header class="top">
     <button class="brand" id="brandBtn" type="button" aria-label="Cambiar el nombre de tu granja">Vaquero Valley<small id="houseName">Choza</small></button>
     <div class="stats">
-      <button class="pill" id="soundBtn" type="button" aria-label="Sonido">🔊</button>
+      <button class="pill" id="soundBtn" type="button" aria-label="Sonido">🔊</button><button class="pill" id="cloudBtn" type="button" aria-label="Tu cuenta">☁️</button>
       <div class="pill" title="Nivel">Nv <span id="lvl">1</span><div class="bar"><i id="xpbar"></i></div></div>
       <button class="pill" id="waterPill" title="Agua" aria-label="Agua">💧 <span id="water">0</span></button><button class="pill" id="storePill" title="Bodegas" aria-label="Bodegas"><span id="store">0/50</span></button>
       <div class="pill"><span class="coin"></span><span id="coins">0</span></div>
@@ -438,7 +438,7 @@ if(!S.workers)S.workers=[];if(!S.fab)S.fab={};if(!S.mats)S.mats={};if(!S.zones)S
 if(!S.pens){const has=t=>S.animals.some(a=>a.type===t);S.pens={A:{open:1,beb:0,com:0,techo:0,amp:0},B:{open:(has('oveja')||has('cabra'))?1:0,beb:0,com:0,techo:0,amp:0},C:{open:(has('caballo')||(S.fab&&S.fab.ecuestre&&S.fab.ecuestre.lv))?1:0,beb:0,com:0,techo:0,amp:0}};
   for(const k of['A','B','C'])if(S.pens[k].open)while(penCap(k)<penCount(k)&&S.pens[k].amp<3)S.pens[k].amp++}
 for(const id of Object.keys(FACT))if(!S.fab[id])S.fab[id]={lv:0,buildEnd:0,jobs:[],ready:{},last:null};if(!S.tool||CROPS[S.tool])S.tool='hand';if(S.water==null)S.water=80;if(!S.cos)S.cos={own:{},eq:{}};if(!S.bod)S.bod={cosecha:S.bodega||0,producto:Math.max(0,(S.bodega||0)-1),material:Math.max(0,(S.bodega||0)-1)};S.bodega=S.bod.cosecha;if(!S.wat)S.wat={tank:0,pump:0,rain:0};if(!S.wageAt)S.wageAt=Date.now();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){S.savedAt=Date.now();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(typeof CLOUD!=='undefined')CLOUD.dirty=true}
 
 // ================= UTIL =================
 const $=id=>document.getElementById(id);
@@ -1046,6 +1046,59 @@ function constructPanel(){let h=`<p class="sub">Elige qué construir y luego arr
 let movePlotPick=false;
 if(!S.place)S.place={granero:Object.assign({},PLACE_SUG.granero),almacen:Object.assign({},PLACE_SUG.almacen),materiales:Object.assign({},PLACE_SUG.materiales)};
 S.plots.forEach((p,i)=>{if(p.x==null){p.x=PLOT.x0+(i%PLOT.cols)*PLOT.gx;p.y=PLOT.y0+Math.floor(i/PLOT.cols)*PLOT.gy}});syncPlace();
+
+// ================= CUENTA EN LA NUBE (Firebase) =================
+// Pega aquí la configuración de tu proyecto Firebase (Configuración del proyecto → Tus apps → Web).
+const FB_CONFIG=null;
+const FB_VER='10.12.2';
+const CLOUD={ready:false,user:null,busy:false,err:'',dirty:false,lastPush:0,msg:''};
+function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s)})}
+async function cloudInit(){if(!FB_CONFIG||CLOUD.ready)return;try{const b=`https://cdn.jsdelivr.net/npm/firebase@${FB_VER}/`;
+    await loadScript(b+'firebase-app-compat.js');await loadScript(b+'firebase-auth-compat.js');await loadScript(b+'firebase-firestore-compat.js');
+    const fb=window.firebase;fb.initializeApp(FB_CONFIG);CLOUD.auth=fb.auth();CLOUD.auth.languageCode='es';CLOUD.db=fb.firestore();CLOUD.ready=true;
+    CLOUD.auth.onAuthStateChanged(async u=>{CLOUD.user=u;renderCloudBtn();if(u)await cloudPull();if(openName==='cuenta')renderPanel()})}
+  catch(e){CLOUD.err='No se pudo conectar con la nube. Revisa tu internet.';renderCloudBtn()}}
+const cloudDoc=()=>CLOUD.db.collection('users').doc(CLOUD.user.uid);
+async function cloudPush(force){if(!CLOUD.user||CLOUD.busy)return;if(!force&&!CLOUD.dirty)return;CLOUD.busy=true;
+  try{await cloudDoc().set({save:JSON.stringify(S),updatedAt:S.savedAt||Date.now(),lvl:S.lvl,farm:S.farmName||'',email:CLOUD.user.email||''});CLOUD.dirty=false;CLOUD.lastPush=Date.now();CLOUD.err=''}
+  catch(e){CLOUD.err='No se pudo guardar en la nube. Lo intentaremos de nuevo.'}finally{CLOUD.busy=false;renderCloudBtn()}}
+async function cloudPull(){try{const d=await cloudDoc().get();
+    if(!d.exists){await cloudPush(true);toast('☁️ Tu rancho ya se guarda en tu cuenta');return}
+    const c=d.data();if(!c.save||(c.updatedAt||0)<=(S.savedAt||0)){await cloudPush(true);return}
+    const fresh=S.lvl<=1&&!S.plots.length;
+    if(fresh||confirm(`Encontramos un rancho guardado en tu cuenta: "${c.farm||'Mi granja'}", nivel ${c.lvl||1}.\n\n¿Quieres cargarlo en este dispositivo?\n(Si eliges Cancelar, el rancho de este dispositivo reemplazará al de tu cuenta.)`)){
+      try{localStorage.setItem(KEY,c.save)}catch(e){}quiet=true;location.reload()}
+    else await cloudPush(true)}
+  catch(e){CLOUD.err='No se pudo leer tu rancho de la nube.'}}
+function renderCloudBtn(){const b=$('cloudBtn');if(!b)return;b.textContent=CLOUD.user?(CLOUD.err?'⚠️':'☁️✓'):'☁️';b.classList.toggle('full',!!CLOUD.err)}
+const FB_ERR={'auth/email-already-in-use':'Ese correo ya tiene cuenta. Toca "Entrar".','auth/invalid-email':'El correo no es válido.','auth/weak-password':'La contraseña debe tener al menos 6 caracteres.',
+  'auth/invalid-credential':'Correo o contraseña incorrectos.','auth/wrong-password':'Correo o contraseña incorrectos.','auth/user-not-found':'No hay cuenta con ese correo.','auth/too-many-requests':'Demasiados intentos. Espera un momento.','auth/network-request-failed':'Sin conexión a internet.'};
+const fbMsg=e=>FB_ERR[e&&e.code]||'Algo salió mal. Intenta de nuevo.';
+function cuentaPanel(){
+  if(!FB_CONFIG)return `<div class="note">☁️ Las cuentas con correo se activan cuando conectemos tu proyecto de Firebase. Mientras tanto tu rancho se guarda en este dispositivo.</div>`;
+  if(!CLOUD.ready)return `<div class="note">${CLOUD.err||'Conectando con la nube…'}</div>`;
+  if(CLOUD.user){const t=CLOUD.lastPush?new Date(CLOUD.lastPush).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}):'—';
+    return `<div class="card hl"><div class="ava">☁️</div><div class="info"><div class="nm">Conectado <span class="tag green">Respaldado</span></div><div class="ds">${CLOUD.user.email}<br>Último guardado en la nube: ${t}</div>${CLOUD.err?`<div class="ds" style="color:var(--red)">${CLOUD.err}</div>`:''}</div></div>
+      <p class="sub">Tu rancho se guarda solo en tu cuenta. Si cambias de celular o computadora, entra con el mismo correo y lo recuperas.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-x="fbSync">Guardar ahora</button><button class="btn sm ghost" data-x="fbLogout">Cerrar sesión</button></div>`}
+  return `<p class="sub">Crea tu cuenta para guardar tu rancho en la nube y recuperarlo en cualquier dispositivo.</p>
+    <div class="namebox"><label class="ds">Correo</label><input id="fbEmail" type="email" autocomplete="email" placeholder="tucorreo@ejemplo.com">
+    <label class="ds">Contraseña</label><input id="fbPass" type="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres"></div>
+    <label class="ds" style="display:flex;gap:8px;align-items:flex-start;margin:4px 0 10px"><input id="fbAge" type="checkbox" style="margin-top:3px"> Tengo 13 años o más, o un adulto me está ayudando a crear la cuenta.</label>
+    ${CLOUD.msg?`<div class="note">${CLOUD.msg}</div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-x="fbSignup">Crear cuenta</button><button class="btn wood" data-x="fbLogin">Entrar</button><button class="btn sm ghost" data-x="fbReset">¿Olvidaste tu contraseña?</button></div>
+    <p class="sub" style="margin-top:10px">Solo usamos tu correo para guardar tu rancho y ayudarte a recuperar tu contraseña.</p>`}
+async function cloudAction(x){const em=($('fbEmail')||{}).value,pw=($('fbPass')||{}).value;CLOUD.msg='';
+  try{
+    if(x==='fbSignup'){if(!$('fbAge').checked){CLOUD.msg='Para crear la cuenta marca la casilla de edad o pide ayuda a un adulto.';renderPanel();return}
+      const r=await CLOUD.auth.createUserWithEmailAndPassword((em||'').trim(),pw||'');try{await r.user.sendEmailVerification()}catch(_){}toast('¡Cuenta creada! Revisa tu correo para confirmarla.')}
+    else if(x==='fbLogin'){await CLOUD.auth.signInWithEmailAndPassword((em||'').trim(),pw||'');toast('¡Bienvenido de vuelta!')}
+    else if(x==='fbReset'){if(!em){CLOUD.msg='Escribe tu correo arriba y vuelve a tocar el botón.';renderPanel();return}await CLOUD.auth.sendPasswordResetEmail(em.trim());CLOUD.msg='Te enviamos un correo para cambiar tu contraseña.'}
+    else if(x==='fbLogout'){await cloudPush(true);await CLOUD.auth.signOut();toast('Sesión cerrada. Tu rancho sigue en este dispositivo y en tu cuenta.')}
+    else if(x==='fbSync'){await cloudPush(true);toast(CLOUD.err||'☁️ Guardado en la nube')}}
+  catch(e){CLOUD.msg=fbMsg(e)}
+  if(openName==='cuenta')renderPanel()}
+setInterval(()=>cloudPush(false),20000);
 
 // ================= FÁBRICAS =================
 const fabCap=f=>2+f.lv;
@@ -2965,7 +3018,7 @@ $('zoneMenu').addEventListener('click',e=>{const b=e.target.closest('[data-go]')
 
 // ================= PANELES =================
 let openName=null,focusAnimal=null;
-const TITLES={construir:'Construir',estilo:'Estilo y eventos',agua:'Agua',mejorar:'Construir y mejorar',fabricas:'Fábricas y recursos',equipo:'Tu equipo',pedidos:'Pedidos del pueblo',vender:'Vender',animales:'Tus animales',tienda:'Tienda agrícola',mas:'Granjeros',casa:'Tu casa',bodega:'Bodega',clinica:'Clínica veterinaria'};
+const TITLES={cuenta:'Tu cuenta',construir:'Construir',estilo:'Estilo y eventos',agua:'Agua',mejorar:'Construir y mejorar',fabricas:'Fábricas y recursos',equipo:'Tu equipo',pedidos:'Pedidos del pueblo',vender:'Vender',animales:'Tus animales',tienda:'Tienda agrícola',mas:'Granjeros',casa:'Tu casa',bodega:'Bodega',clinica:'Clínica veterinaria'};
 function openPanel(n){sfx('click');openName=n;$('sheet').hidden=false;$('sheetTitle').textContent=TITLES[n]||(n.startsWith('fab:')?FACT[n.slice(4)].n:n.startsWith('zona:')?ZONES[n.slice(5)].n:n.startsWith('pen:')?PENS[n.slice(4)].n:'');renderPanel();$('sheetBody').scrollTop=0;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===n||((n.startsWith('fab:')||n.startsWith('zona:'))&&b.dataset.p==='fabricas')||(n.startsWith('pen:')&&b.dataset.p==='animales')))}
 function closePanel(){openName=null;$('sheet').hidden=true;document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'))}
@@ -3073,6 +3126,7 @@ function upPill(x,y,txt){if(CAP)return;ctx.save();ctx.font='800 10.5px "Baloo 2"
   ctx.fillStyle='#2b2416';ctx.textAlign='left';ctx.fillText(txt,x+7,y+12.5-b);ctx.restore()}
 function labelW(txt){ctx.save();ctx.font='800 11px "Baloo 2",system-ui';const w=ctx.measureText(txt).width+16;ctx.restore();return w}
 const PANELS={
+  cuenta:cuentaPanel,
   construir:constructPanel,
   agua:aguaPanel,
   estilo:estiloPanel,
@@ -3206,6 +3260,7 @@ const PANELS={
     let h=`<h3>Mercado entre granjeros <span class="tag">Próximamente</span></h3><p class="sub">Cuando el juego esté en línea, cada jugador podrá especializarse y comerciar con los demás. Ejemplos:</p>`;
     for(const o of ex)h+=`<div class="card"><div class="ava">${o.i}</div><div class="info"><div class="nm">${o.who} <span class="label">${o.sp}</span></div><div class="ds">Vende ${o.q} a ${o.p}🪙 c/u · ejemplo</div></div><div class="acts"><button class="btn sm" disabled>Comprar</button></div></div>`;
     h+=`<h3>Tienda justa <span class="tag">Idea</span></h3><div class="note">Compras opcionales y baratas, solo cosméticas: colores de cerca, sombreros para animales, pintura para la casa. <b>Nunca pagos para acelerar tiempos.</b></div>
+    <h3>Cuenta</h3><div><button class="btn sm" data-x="go" data-k="cuenta">☁️ ${CLOUD.user?'Conectado: '+CLOUD.user.email:'Guardar mi rancho en la nube'}</button></div>
     <h3>Ajustes</h3><p class="sub">Tu granja se llama <b>${S.farmName||'Mi granja'}</b>. Tu partida se guarda en este navegador.</p><div><button class="btn sm ghost" data-x="rename">Cambiar nombre de la granja</button></div><div><button class="btn sm danger" data-x="reset">${confirmReset?'Toca otra vez para borrar todo':'Empezar granja nueva'}</button></div>`;
     return h;
   },
@@ -3213,6 +3268,7 @@ const PANELS={
 let pendingSell=null,pendingT,confirmReset=false,pendingFire=null;
 $('sheetBody').addEventListener('click',e=>{
   const b=e.target.closest('[data-x]');if(!b||b.disabled)return;const x=b.dataset.x,k=b.dataset.k;
+  if(x.startsWith('fb')){cloudAction(x);return}
   switch(x){
     case 'goOrder':enqueue({kind:'order',ref:b.dataset.id});return;
     case 'contract':{const i=S.contracts.findIndex(o=>o.id===b.dataset.id);if(i<0)return;const o=S.contracts[i];if(!canDeliver(o))return;for(const[q,n]of Object.entries(o.need)){S.inv[q]-=n;if(!S.inv[q])delete S.inv[q]}S.coins+=o.reward;addXp(o.xp);S.contracts.splice(i,1);sfx('bigcoin');toast(`${o.who} te pagó ${fmt(o.reward)} monedas`);floatText(MARKET_POS.x,MARKET_POS.y,`+${fmt(o.reward)} 🪙`,'#ffe27a',80);setTimeout(()=>{fillOrders();save();if(openName==='pedidos')renderPanel()},8000);break}
@@ -3279,6 +3335,8 @@ $('sheetBody').addEventListener('click',e=>{
 });
 
 // arranque
+$('cloudBtn').addEventListener('click',()=>openPanel('cuenta'));renderCloudBtn();cloudInit();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cloudPush(false)});
 $('placeBar').addEventListener('click',e=>{const b=e.target.closest('[data-pl]');if(!b||b.disabled)return;if(b.dataset.pl==='ok')confirmPlace();else{endPlace();toast('Cancelado')}});
 $('waterPill').addEventListener('click',()=>openPanel('agua'));$('storePill').addEventListener('click',()=>openPanel('bodega'));
 $('sheetBody').addEventListener('change',e=>{const sl=e.target.closest('select[data-wpost]');if(!sl)return;const w=S.workers.find(x=>x.id==sl.dataset.wpost);if(!w)return;w.post=sl.value||null;const l=wlive.get(w.id);if(l){l.task=null;l.work=0}save();renderPanel()});
